@@ -160,7 +160,7 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 			print("@", end="")
 		print(file_content[i], end="")
 		present_state = "block"
-	elif (present_state == "macro_beggining"):
+	elif (present_state == "macro_beggining"): #Stav do ktereho se dostane automat, pokud je na vstupu @ za kterym nasleduje A-Z,a-z,_
 		macro_name = get_macroname(content_len)
 		if (macro_name == "def"):
 			if (def_redefined == False):
@@ -188,7 +188,7 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 		else:
 			print("CHYBA: Semanticka chyba.", file=sys.stderr)
 			sys.exit(56)
-	elif (present_state == "macro_set"):
+	elif (present_state == "macro_set"): #Pokud je na vstupu makro set
 		if (file_content[i] == '{'): #Za @set musi byt {
 			if (i + 1 < content_len): #Osetreni zda nezasahujem mimo string
 				i = i + 1 #Posunuti na dalsi znak
@@ -214,6 +214,24 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 			print("CHYBA: Syntakticka chyba.", file=sys.stderr)
 			sys.exit(55) #OVERIT CHYBU
 		present_state = "common_text"
+	elif (present_state == "macro_definition"): #proces definice makra - ziskani nazvu definovaneho makra
+		if (file_content[i] == '@'): #Dalsim znakem po makru def/__def__ musi byt @
+			if (i + 1 < content_len):
+				i = i + 1 #Posunuti na dalsi znak
+				if (file_content[i].isalpha() or file_content[i] == '_'): #Povolene znaky, kterymi muze zacinat makro
+					macro_name = get_macroname(content_len) #Ziska se nazev makra
+					present_state = "macro_definition_params_1"
+				else:
+					print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+					sys.exit(55)
+			else:
+				print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+				sys.exit(55) #OVERIT CHYBU
+		else:
+			print("CHYBA: Semanticka chyba.", file=sys.stderr)
+			sys.exit(56)
+	elif (present_state == "macro_definition_params_1"):
+		#Zde kontrolovat zavorku { a inicializovat seznam parametru, a zamyslet se nad tim, co se stane, pokud v parametrech nebude nic, za zacatek stavu s cislem 2 dat podminku, jestli je znak rozdilny od }
 
 
 	i = i + 1
