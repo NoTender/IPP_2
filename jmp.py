@@ -28,6 +28,16 @@ def get_setparam(content_len): #Funkce, ktera ziska parametr pro makro set
 		i = i + 1
 	return param
 
+def get_paramname(content_len): #Funkce, ktera ziska nazev parametru pri definici makra 
+	global i
+	global file_content
+	param = "$"
+	while ((i < content_len) and (file_content[i].isalnum() or file_content[i] == '_')):
+		param = param + file_content[i]
+		i = i + 1
+	i = i - 1
+	return param
+
 #nastaveni zadanych tagu na hodnotu False, tagy slouzi pro overeni duplicitnich zadani:
 input_tag = False
 output_tag = False
@@ -102,6 +112,7 @@ present_state = "common_text" #Nastaveni pocatecniho stavu pro konecny automat
 brackets_count = 0 #Pocitadlo zavorek v bloku
 macro_name = "" #Retezec na ukladani jmena makra
 macro_names = ["def", "undef", "set", "__def__", "__undef__", "__set__"] #Inicializace pole s nazvy maker preddefinovanymi makry
+macro_table = {'def':[[], ""], 'undef':[[],""], 'set':[[],""], '__def__':[[],""], '__undef__':[[],""], '__set__':[[],""]}
 def_redefined = False
 undef_redefined = False
 set_redefined = False
@@ -110,11 +121,16 @@ skip_whitespaces = False
 
 #Konecny automat:
 while (i < content_len): #Prochazeni souboru po jednotlivych znacich
-	if (file_content[i].isspace() and (skip_whitespaces == True)): #Pokud se jedna o bily znak a bile znaky se maji preskakovat
-		if (present_state == "at_sign_read"):
-			print("CHYBA: Syntakticka chyba.", file=sys.stderr)
-			sys.exit(55)
-		if (present_state not in ["block", "at_sign_in_block"]): #Pokud se nevyskytujem v bloku, preskoc znak
+	if (skip_whitespaces == True): #Pokud se jedna o bily znak a bile znaky se maji preskakovat
+		if (file_content[i].isspace()):
+			if (present_state == "at_sign_read"):
+				print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+				sys.exit(55)
+			if (present_state not in ["block", "at_sign_in_block"]): #Pokud se nevyskytujem v bloku, preskoc znak
+				i = i + 1
+				continue
+	else:
+		if ((file_content[i].isspace()) and (present_state == "macro_definition_params_2")):
 			i = i + 1
 			continue
 	if (present_state == "common_text"): #Stav reprezentujici pozici v normalnim textu
@@ -202,17 +218,17 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 					sys.exit(56)
 				if (i < content_len): #Osetreni zda nezasahujem mimo string
 					if (file_content[i] != "}"): #Posledni znak musi byt }
-						print("CHYBA: Syntakticka chyba.", file=sys.stderr)
-						sys.exit(55) #OVERIT CHYBU
+						print("CHYBA: Semanticka chyba.", file=sys.stderr)
+						sys.exit(56) #OVERIT CHYBU
 				else: #Pokud se zasahuje mimo string
-					print("CHYBA: Syntakticka chyba.", file=sys.stderr)
-					sys.exit(55) #OVERIT CHYBU
+					print("CHYBA: Semanticka chyba.", file=sys.stderr)
+					sys.exit(56) #OVERIT CHYBU
 			else: #Pokud se zasahuje mimo string
-				print("CHYBA: Syntakticka chyba.", file=sys.stderr)
-				sys.exit(55) #OVERIT CHYBU
+				print("CHYBA: Semanticka chyba.", file=sys.stderr)
+				sys.exit(56) #OVERIT CHYBU
 		else: #Pokud za makrem set neni {
-			print("CHYBA: Syntakticka chyba.", file=sys.stderr)
-			sys.exit(55) #OVERIT CHYBU
+			print("CHYBA: Semanticka chyba.", file=sys.stderr)
+			sys.exit(56) #OVERIT CHYBU
 		present_state = "common_text"
 	elif (present_state == "macro_definition"): #proces definice makra - ziskani nazvu definovaneho makra
 		if (file_content[i] == '@'): #Dalsim znakem po makru def/__def__ musi byt @
@@ -220,6 +236,15 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 				i = i + 1 #Posunuti na dalsi znak
 				if (file_content[i].isalpha() or file_content[i] == '_'): #Povolene znaky, kterymi muze zacinat makro
 					macro_name = get_macroname(content_len) #Ziska se nazev makra
+					if ((macro_name == "__def__") or (macro_name == "__set__") or (macro_name == "__undef__")): #Pokud se uzivatel snazi predefinovat nepredefinovatelna makra
+						print("CHYBA: Snaha predefinovat makra, ktera predefinovat nelze.", file=sys.stderr)
+						sys.exit(57)
+					elif (macro_name == "def"): #Nastaveni tagu pokud je nejake z vestavenych maker predefinovano
+						def_redefined = True
+					elif (macro_name == "set"):
+						set_redefined = True
+					elif (macro_name == "undef"):
+						undef_redefined = True
 					present_state = "macro_definition_params_1"
 				else:
 					print("CHYBA: Syntakticka chyba.", file=sys.stderr)
@@ -230,8 +255,64 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 		else:
 			print("CHYBA: Semanticka chyba.", file=sys.stderr)
 			sys.exit(56)
-	elif (present_state == "macro_definition_params_1"):
-		#Zde kontrolovat zavorku { a inicializovat seznam parametru, a zamyslet se nad tim, co se stane, pokud v parametrech nebude nic, za zacatek stavu s cislem 2 dat podminku, jestli je znak rozdilny od }
+	elif (present_state == "macro_definition_params_1"): #Kontrola, zda za nazvem makra nasleduje { a inicializace prazdneho seznamu pro parametry
+		if (file_content[i] == '{'):
+			macro_parameters = []
+			present_state = "macro_definition_params_2"
+		else:
+			print("CHYBA: Semanticka chyba.", file=sys.stderr)
+			sys.exit(56) #OVERIT CHYBU
+	elif (present_state == "macro_definition_params_2"): #Nacitani jednotlivych parametru makra
+		if (file_content[i] != '}'): #Pokud jsou jeste nenactene argumenty
+			if (file_content[i] == '$'): #Pokud je prvnim znakem parametru $
+				if (i + 1 < content_len): #Kontrola meze stringu
+					i = i + 1 #Posunuti na dalsi radek
+					if (file_content[i].isalpha() or (file_content[i] == '_')): #Prvni znak po $ musi byt A-Z,a-z,_
+						parameter = get_paramname(content_len)
+						macro_parameters.append(parameter)
+					else: #Neplatny nazev makra
+						print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+						sys.exit(55)
+				else: #Pokud jsme predcasne narazili na konec stringu
+					print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+					sys.exit(55)
+			else: #Pokud prvnim znakem parametru neni dolar
+				print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+				sys.exit(55) #OVERIT CHYBU
+		else: #Pokud byla nactena } konci cast ziskavani parametru
+			present_state = "macro_definition_body"
+	elif (present_state == "macro_definition_body"):
+		if (file_content[i] == '{'):
+			brackets_count_body = 0
+			macro_body = ""
+			while (True): #Nacteni tela makra do retezce
+				if (file_content[i] == '{'):
+					if (brackets_count_body == 0): #Pokud se jedna o prvni zavorku, neni soucasti tela makra
+						brackets_count_body = brackets_count_body + 1
+					else: #Pokud se jedna o dalsi uzaviraci zavorku
+						macro_body = macro_body + file_content[i]
+						brackets_count_body = brackets_count_body + 1
+				elif (file_content[i] == '}'):
+					brackets_count_body = brackets_count_body - 1
+					if (brackets_count_body == 0): #Pokud je zavorka posledni zavorkou
+						break
+					else:
+						macro_body = macro_body + file_content[i]
+				else: #Pokud se jedna o jakykoliv jiny znak
+					macro_body = macro_body + file_content[i]
+				i = i + 1
+				if (i >= content_len): #Pokud je predcasny konec souboru
+					break
+			if (brackets_count_body != 0):
+				print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+				sys.exit(55)
+			if (macro_name not in macro_names):
+				macro_names.append(macro_name)
+			macro_table[macro_name] = [macro_parameters, macro_body]
+			present_state = "common_text"
+		else: #Chybi pocatecni zavorka {
+			print("CHYBA: Semanticka chyba.", file=sys.stderr)
+			sys.exit(56)
 
 
 	i = i + 1
