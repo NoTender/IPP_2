@@ -3,12 +3,7 @@
 #JMP:xdudek04
 import sys, getopt
 import os.path
-
-def macro_defined(macro_names, macro_name): #Funkce, ktera vraci True v pripade, ze se zadane makro vyskytuje v seznamu definovanych maker 
-	for macro in macro_names:
-		if (macro == macro_name):
-			return True
-	return False
+import re
 
 def get_macroname(content_len): #Funkce, ktera vraci jmeno makra ze souboru
 	global i
@@ -89,7 +84,9 @@ for option, arg in options:
 if (len(args) != 0): #Pokud byly zadany neplatne prepinace
 	print("CHYBA: Prepinace byly chybne zadany.", file=sys.stderr)
 	sys.exit(1)
-
+file_content = "" #Inicializace retezce do ktereho se bude nacitat obsah souboru
+if (cmd_tag == True):
+	file_content = file_content + cmd_text
 #Samotna cinnost skriptu:
 if (input_tag == True): #Pokud byl zadan prepinac --input
 	if (os.path.isfile(input_filename) == True): #Overeni, zda soubor existuje
@@ -101,7 +98,7 @@ if (input_tag == True): #Pokud byl zadan prepinac --input
 	else: #Pokud soubor neexistuje
 		print("CHYBA: Soubor zadany pomoci prepinace --input neexistuje.", file=sys.stderr)
 		sys.exit(2)
-file_content = input_file.read() #Nacteni obsahu souboru do promenne
+file_content = file_content + input_file.read() #Nacteni obsahu souboru do promenne
 if (input_tag == True): #Zavreni souboru
 	input_file.close()
 
@@ -117,6 +114,7 @@ def_redefined = False
 undef_redefined = False
 set_redefined = False
 skip_whitespaces = False
+macro_args = [] #Do teto promenne se ukladaji hodnoty parametru pri expanzi makra
 
 
 #Konecny automat:
@@ -178,21 +176,27 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 		present_state = "block"
 	elif (present_state == "macro_beggining"): #Stav do ktereho se dostane automat, pokud je na vstupu @ za kterym nasleduje A-Z,a-z,_
 		macro_name = get_macroname(content_len)
-		if (macro_name == "def"):
+		if (macro_name == "def" and (macro_name in macro_names)):
 			if (def_redefined == False):
 				present_state = "macro_definition"
 			else:
 				present_state = "macro_expansion"
-		elif (macro_name == "undef"):
+				i = i - 1
+				macro_args = []
+		elif (macro_name == "undef" and (macro_name in macro_names)):
 			if (undef_redefined == False):
 				present_state = "macro_undefinition"
 			else:
 				present_state = "macro_expansion"
-		elif (macro_name == "set"):
+				i = i - 1
+				macro_args = []
+		elif (macro_name == "set" and (macro_name in macro_names)):
 			if (set_redefined == False):
 				present_state = "macro_set"
 			else:
 				present_state = "macro_expansion"
+				i = i - 1
+				macro_args = []
 		elif (macro_name == "__def__"):
 			present_state = "macro_definition"
 		elif (macro_name == "__undef__"):
@@ -201,6 +205,8 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 			present_state = "macro_set"
 		elif (macro_name in macro_names):
 			present_state = "macro_expansion"
+			i = i - 1
+			macro_args = []
 		else:
 			print("CHYBA: Semanticka chyba.", file=sys.stderr)
 			sys.exit(56)
@@ -236,6 +242,10 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 				i = i + 1 #Posunuti na dalsi znak
 				if (file_content[i].isalpha() or file_content[i] == '_'): #Povolene znaky, kterymi muze zacinat makro
 					macro_name = get_macroname(content_len) #Ziska se nazev makra
+					if (r_tag == True):
+						if (macro_name in macro_names):
+							print("CHYBA: Nelze predefinovat jiz definovane makro.", file=sys.stderr)
+							sys.exit(57)
 					if ((macro_name == "__def__") or (macro_name == "__set__") or (macro_name == "__undef__")): #Pokud se uzivatel snazi predefinovat nepredefinovatelna makra
 						print("CHYBA: Snaha predefinovat makra, ktera predefinovat nelze.", file=sys.stderr)
 						sys.exit(57)
@@ -281,7 +291,7 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 				sys.exit(55) #OVERIT CHYBU
 		else: #Pokud byla nactena } konci cast ziskavani parametru
 			present_state = "macro_definition_body"
-	elif (present_state == "macro_definition_body"):
+	elif (present_state == "macro_definition_body"): #Stav reprezentujici nacitani tela makra
 		if (file_content[i] == '{'):
 			brackets_count_body = 0
 			macro_body = ""
@@ -313,8 +323,71 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 		else: #Chybi pocatecni zavorka {
 			print("CHYBA: Semanticka chyba.", file=sys.stderr)
 			sys.exit(56)
-
-
+	elif (present_state == "macro_expansion"): #Nacitani argumentu a expanze makra
+		#Na zacatku tohoto stavu se v souboru nachazime na poslednim znaku expandovaneho makra
+		#Cast nacitani argumentu makra:
+		if (len(macro_args) < len(macro_table[macro_name][0])): #Pokud je pocet nactenych argumentu mensi nez pocet parametru makra - tzn. je potreba nacist argumenty
+			i = i + 1 #Posunuti se na dalsi znak - prvni znak za nazvem makra
+			while ((i < content_len) and (len(macro_args) < len(macro_table[macro_name][0]))): #Dokud nenarazime na konec souboru nebo nejsou nacteny vsechny argumenty makra
+				if (file_content[i].isspace() and skip_whitespaces == True): #Pokud je znakem bily znak a je zapotrebi ho preskocit
+					i = i + 1
+					continue
+				if (file_content[i] == '{'): #Pokud je parametrem blok
+					brackets_count_expansion = 0
+					param = "" #Vynulovani na prazdny retezec
+					while (True): #Nacteni tela parametru do retezce
+						if (file_content[i] == '{'):
+							if (brackets_count_expansion == 0): #Pokud se jedna o prvni zavorku, neni soucasti tela makra
+								brackets_count_expansion = brackets_count_expansion + 1
+							else: #Pokud se jedna o dalsi oteviraci zavorku
+								param = param + file_content[i]
+								brackets_count_expansion = brackets_count_expansion + 1
+						elif (file_content[i] == '}'):
+							brackets_count_expansion = brackets_count_expansion - 1
+							if (brackets_count_expansion == 0): #Pokud je zavorka posledni zavorkou
+								break
+							else:
+								param = param + file_content[i]
+						else: #Pokud se jedna o jakykoliv jiny znak
+							param = param + file_content[i]
+						i = i + 1
+						if (i >= content_len): #Pokud je predcasny konec souboru
+							break
+					if (brackets_count_expansion != 0):
+						print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+						sys.exit(55)
+					macro_args.append(param)
+				elif (file_content[i] == '@'): #Pokud je argumentem makro
+					param = '@'
+					if (i + 1 < content_len): #Pokud se za @ jeste neco nachazi
+						i = i + 1
+						if (file_content[i].isalpha() or file_content[i] == '_'):
+							param = param + get_macroname(content_len)
+							macro_args.append(param)
+						else: #Pokud makro nezacina jednim z povolenych znaku
+							print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+							sys.exit(55)
+					else: #Pokud je @ poslednim znakem v souboru
+						print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+						sys.exit(55)
+				else: #Pokud se jedna o jakykoliv jiny znak
+					macro_args.append(file_content[i])
+				i = i + 1
+			if (len(macro_args) != len(macro_table[macro_name][0])): #Pokud skoncil cyklus a vsechny parametry jeste nejsou nacteny
+				print("CHYBA: Semanticka chyba.", file=sys.stderr)
+				sys.exit(56)
+			i = i -1 #Posunuti se o znak dozadu, nachazime se na poslednim znaku posledniho parametru (zavorka } nebo posledni pismeno makra nebo nacteny znak jako parametr)
+		#Pokud jsou jiz argumenty nacteny, nebo nebylo zapotrebi argumenty nacitat:
+		j = 0 #Pocitadlo cyklu
+		expanded_body = macro_table[macro_name][1] #Do promenne se nacte telo makra
+		while (j < len (macro_args)): #pro kazdy parametr udelej nasledujici - nahrad promennou v tele jeji hodnotou
+			pattern = '(?<!@)\\' + macro_table[macro_name][0][j] + '\\b' #Vytvoreni regexu, kterym se bude nahrazovat v tele makra
+			expanded_body = re.sub(pattern, macro_args[j], expanded_body) #Nahrazeni promenne jeji hodnotou
+			j = j + 1
+		expanded_body = re.sub('@\$','$', expanded_body) #Nahrazeni escape sekvence dolaru
+		file_content = file_content[0:i+1] + expanded_body + file_content[i+1:] #Pridani expandovaneho tela na vstup
+		content_len = len(file_content) #Prepocitani delky retezce
+		present_state = "common_text" #Prechod do normalniho stavu
 	i = i + 1
 if (present_state != "common_text"):
 	print("CHYBA: Syntakticka chyba.", file=sys.stderr)
