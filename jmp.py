@@ -102,6 +102,14 @@ file_content = file_content + input_file.read() #Nacteni obsahu souboru do prome
 if (input_tag == True): #Zavreni souboru
 	input_file.close()
 
+if (output_tag == True): #Pokud byl zadan prepinac --output
+	try: #Overeni, zda jde soubor otevrit
+		output_file = open(output_filename, "w")
+	except IOError:
+		print("CHYBA: Nelze otevrit soubor pro zapis", file=sys.stderr)
+		sys.exit(3)
+
+
 #Inicializace promennych uzivanych v konecnem automatu:
 content_len = len(file_content) #Zjisteni delky retezce
 i = 0 #Ridici promenna
@@ -141,10 +149,10 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 			print("CHYBA: Syntakticka chyba.", file=sys.stderr)
 			sys.exit(55)
 		else: #Pokud se jedna o jakykoliv jiny znak, tiskne se na vystup
-			print(file_content[i], end="")
+			print(file_content[i], end="", file=output_file)
 	elif (present_state == "at_sign_read"): #Stav reprezentujici nacteny znak @
 		if ((file_content[i] == '@') or (file_content[i] == '{') or (file_content[i] == '}') or (file_content[i] == '$')): #Pokud se jedna o escape sekvenci
-			print(file_content[i], end="")
+			print(file_content[i], end="", file=output_file)
 			present_state = "common_text"
 		elif (((ord(file_content[i]) >= ord('a')) and (ord(file_content[i]) <= ord('z'))) or ((ord(file_content[i]) >= ord('A')) and (ord(file_content[i]) <= ord('Z'))) or (file_content[i] == '_')): #Pokud je znak mezi A-Z nebo a-z nebo _ jedna se nazev makra
 			i = i - 1 #Zajisti, ze v pristim cyklu budeme stale na stejnem znaku 
@@ -157,22 +165,22 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 			if (brackets_count == 0): #Pokud se jedna o prvni oteviraci zavorku
 				brackets_count = brackets_count + 1
 			else: #Pokud se nejedna o oteviraci zavorku => vytiskne se
-				print(file_content[i], end="")
+				print(file_content[i], end="", file=output_file)
 				brackets_count = brackets_count + 1
 		elif (file_content[i] == '}'):
 			brackets_count = brackets_count - 1
 			if (brackets_count == 0): #Pokud se jednalo o posledni zavorku
 				present_state = "common_text"
 			else:
-				print(file_content[i], end="")
+				print(file_content[i], end="", file=output_file)
 		elif (file_content[i] == '@'): #Pokud se jedna o @
 			present_state = "at_sign_in_block"
 		else: #Pokud se jedna o jakykoliv jiny znak, vytiskne se
-			print(file_content[i], end="")
+			print(file_content[i], end="", file=output_file)
 	elif (present_state == "at_sign_in_block"): #Escape sekvence nalezena v bloku
 		if ((file_content[i] != '{') and (file_content[i] != '}') and (file_content[i] != '@')):
-			print("@", end="")
-		print(file_content[i], end="")
+			print("@", end="", file=output_file)
+		print(file_content[i], end="", file=output_file)
 		present_state = "block"
 	elif (present_state == "macro_beggining"): #Stav do ktereho se dostane automat, pokud je na vstupu @ za kterym nasleduje A-Z,a-z,_
 		macro_name = get_macroname(content_len)
@@ -388,8 +396,34 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 		file_content = file_content[0:i+1] + expanded_body + file_content[i+1:] #Pridani expandovaneho tela na vstup
 		content_len = len(file_content) #Prepocitani delky retezce
 		present_state = "common_text" #Prechod do normalniho stavu
+	elif (present_state == "macro_undefinition"):
+		if (file_content[i] == '@'): #Pokud je prvnim znakem @
+			if (i + 1 < content_len): #Pokud je za @ jeste nejaky znak
+				i = i + 1
+				if (file_content[i].isalpha() or file_content[i] == '_'): #Prvni znak nazvu makra musi byt A-Z,a-z,_
+					macro_name = get_macroname(content_len) #Zjisteni nazvu makra
+					if ((macro_name == "__def__") or (macro_name == "__undef__") or (macro_name == "__set__")):
+						print("CHYBA: Snaha undefinovat makra, ktera undefinovat nelze.", file=sys.stderr)
+						sys.exit(57)
+					if (macro_name in macro_names): #Pokud je makro definovane
+						del macro_table[macro_name]
+						macro_names.remove(macro_name)
+					else: #Pokud makro neexistuje
+						print("CHYBA: Makro, ktere se snazite undefinovat neexistuje.", file=sys.stderr)
+					present_state = "common_text"
+				else:
+					print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+					sys.exit(55)
+			else:
+				print("CHYBA: Syntakticka chyba.", file=sys.stderr)
+				sys.exit(55)
+		else: #Pokud prvnim znakem neni @
+			print("CHYBA: Semanticka chyba.", file=sys.stderr)
+			sys.exit(56)
 	i = i + 1
 if (present_state != "common_text"):
 	print("CHYBA: Syntakticka chyba.", file=sys.stderr)
 	sys.exit(55)
+if(output_tag == True): #Zavreni vystupniho souboru
+	output_file.close()
 sys.exit(0)
