@@ -123,6 +123,7 @@ undef_redefined = False
 set_redefined = False
 skip_whitespaces = False
 macro_args = [] #Do teto promenne se ukladaji hodnoty parametru pri expanzi makra
+error_tag = False #Promenna urcujici, zda doslo k urcite chybe
 
 
 #Konecny automat:
@@ -187,6 +188,7 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 		if (macro_name == "def" and (macro_name in macro_names)):
 			if (def_redefined == False):
 				present_state = "macro_definition"
+				error_tag = True
 			else:
 				present_state = "macro_expansion"
 				i = i - 1
@@ -194,6 +196,7 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 		elif (macro_name == "undef" and (macro_name in macro_names)):
 			if (undef_redefined == False):
 				present_state = "macro_undefinition"
+				error_tag = True
 			else:
 				present_state = "macro_expansion"
 				i = i - 1
@@ -201,16 +204,20 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 		elif (macro_name == "set" and (macro_name in macro_names)):
 			if (set_redefined == False):
 				present_state = "macro_set"
+				error_tag = True
 			else:
 				present_state = "macro_expansion"
 				i = i - 1
 				macro_args = []
 		elif (macro_name == "__def__"):
 			present_state = "macro_definition"
+			error_tag = True
 		elif (macro_name == "__undef__"):
 			present_state = "macro_undefinition"
+			error_tag = True
 		elif (macro_name == "__set__"):
 			present_state = "macro_set"
+			error_tag = True
 		elif (macro_name in macro_names):
 			present_state = "macro_expansion"
 			i = i - 1
@@ -219,6 +226,7 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 			print("CHYBA: Semanticka chyba.", file=sys.stderr)
 			sys.exit(56)
 	elif (present_state == "macro_set"): #Pokud je na vstupu makro set
+		error_tag = False
 		if (file_content[i] == '{'): #Za @set musi byt {
 			if (i + 1 < content_len): #Osetreni zda nezasahujem mimo string
 				i = i + 1 #Posunuti na dalsi znak
@@ -245,6 +253,7 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 			sys.exit(56) #OVERIT CHYBU
 		present_state = "common_text"
 	elif (present_state == "macro_definition"): #proces definice makra - ziskani nazvu definovaneho makra
+		error_tag = False
 		if (file_content[i] == '@'): #Dalsim znakem po makru def/__def__ musi byt @
 			if (i + 1 < content_len):
 				i = i + 1 #Posunuti na dalsi znak
@@ -397,6 +406,7 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 		content_len = len(file_content) #Prepocitani delky retezce
 		present_state = "common_text" #Prechod do normalniho stavu
 	elif (present_state == "macro_undefinition"):
+		error_tag = False
 		if (file_content[i] == '@'): #Pokud je prvnim znakem @
 			if (i + 1 < content_len): #Pokud je za @ jeste nejaky znak
 				i = i + 1
@@ -421,6 +431,9 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 			print("CHYBA: Semanticka chyba.", file=sys.stderr)
 			sys.exit(56)
 	i = i + 1
+if (error_tag == True):
+	print("CHYBA: Semantickax chyba.", file=sys.stderr)
+	sys.exit(56)
 if (present_state != "common_text"):
 	print("CHYBA: Syntakticka chyba.", file=sys.stderr)
 	sys.exit(55)
