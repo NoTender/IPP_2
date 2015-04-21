@@ -44,6 +44,17 @@ input_file = sys.stdin
 output_file = sys.stdout
 cmd_text = ""
 
+help_text = ("Program:                 Jednoduchy makroprocesor\n"
+"Autor:                   Jindrich Dudek, 2015\n"
+"Funkce:                  Skript plni funkci jednoducheho makroprocesoru.\n"
+"Parametry skriptu:\n"
+"   --help                Vypise napovedu ke skriptu, parametr nesmi byt kombinovan s\n"
+"                         jinymi parametry.\n"
+"   --input=filename      Zadany vstupni textovy soubor s ASCII kodovanim.\n"
+"   --output=filename     Zadany vystupni soubor v ASCII kodovani.\n"
+"   --cmd=text            Zadany text bude pred zacatkem zpracovani vstupu umisten na jeho zacatek.\n"
+"   -r                    V pripade redefinice jiz existujiciho makra zpusobi skript chybu.")
+
 #zpracovani parametru:
 try:
 	options, args = getopt.getopt(sys.argv[1:], "r", ["help", "input=", "output=", "cmd="]) #zpracovani parametru prikazove radky
@@ -55,7 +66,7 @@ for option, arg in options:
 		if (len(sys.argv) != 2): #Pokud byly spolu s --help zadany i jine prepinace
 			print("CHYBA: Prepinac --help nelze kombinovat s jinymi prepinaci.", file=sys.stderr)
 			sys.exit(1)
-		print("Zadana napoveda.")
+		print(help_text)
 		sys.exit(0)
 	elif (option == "--input"):
 		if (input_tag == True): #pokud je prepinac zadan podruhe
@@ -432,7 +443,10 @@ while (i < content_len): #Prochazeni souboru po jednotlivych znacich
 			sys.exit(56)
 	i = i + 1
 if (error_tag == True):
-	print("CHYBA: Semantickax chyba.", file=sys.stderr)
+	print("CHYBA: Semanticka chyba.", file=sys.stderr)
+	sys.exit(56)
+if (present_state == "macro_definition_params_1" or present_state == "macro_definition_body"):
+	print("CHYBA: Semanticka chyba.", file=sys.stderr)
 	sys.exit(56)
 if (present_state != "common_text"):
 	print("CHYBA: Syntakticka chyba.", file=sys.stderr)
